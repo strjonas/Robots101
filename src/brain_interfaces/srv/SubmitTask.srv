@@ -1,0 +1,8 @@
+string instruction
+string target_hint
+int32 expires_after_sec
+---
+bool accepted
+string task_id
+string message
+

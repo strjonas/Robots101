@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>brain_nodes</name>
+  <version>0.1.0</version>
+  <description>Planner, controllers, tracker, arbitration and support nodes for robots101.</description>
+
+  <maintainer email="jonas@example.com">Jonas</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>action_msgs</depend>
+  <depend>ament_index_python</depend>
+  <depend>brain_interfaces</depend>
+  <depend>builtin_interfaces</depend>
+  <depend>cv_bridge</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav2_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>rclpy</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>tf2_ros</depend>
+
+  <exec_depend>python3-opencv</exec_depend>
+
+  <test_depend>ament_pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

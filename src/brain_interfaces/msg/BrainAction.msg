@@ -1,0 +1,21 @@
+std_msgs/Header header
+string task_id
+string correlation_id
+uint8 action_type
+uint8 STOP=0
+uint8 TURN=1
+uint8 DRIVE=2
+uint8 GOTO_SEMANTIC=3
+uint8 FOLLOW_OBJECT=4
+uint8 LOOK_AROUND=5
+float32 angle_rad
+float32 distance_m
+float32 speed_limit
+string target_id
+string follow_label
+string follow_track_id
+float32 preferred_distance_m
+float32 confidence
+string rationale
+bool valid
+

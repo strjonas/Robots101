@@ -1,0 +1,12 @@
+.DS_Store
+.pixi/
+build/
+install/
+log/
+maps/
+*.pyc
+__pycache__/
+.pytest_cache/
+*.pt
+*.onnx
+

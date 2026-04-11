@@ -1,0 +1,32 @@
+frame_id: map
+patrol_order:
+  - foyer_spawn
+  - kitchen_entry
+  - hallway_mid
+  - living_room_doorway
+targets:
+  - name: foyer_spawn
+    x: -4.0
+    y: -2.0
+    yaw: 0.0
+    tags: [spawn, patrol]
+  - name: hallway_mid
+    x: -0.2
+    y: -0.5
+    yaw: 0.0
+    tags: [hallway, patrol]
+  - name: living_room_doorway
+    x: 2.0
+    y: -0.8
+    yaw: 0.0
+    tags: [doorway, living_room, patrol]
+  - name: kitchen_entry
+    x: -4.0
+    y: -0.5
+    yaw: 0.0
+    tags: [doorway, kitchen, patrol]
+  - name: table_zone
+    x: 4.5
+    y: -1.0
+    yaw: 0.0
+    tags: [object_zone]

@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>brain_bringup</name>
+  <version>0.1.0</version>
+  <description>Launch and configuration package for robots101.</description>
+
+  <maintainer email="jonas@example.com">Jonas</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>ament_index_python</depend>
+  <depend>brain_nodes</depend>
+  <depend>launch</depend>
+  <depend>launch_ros</depend>
+  <depend>nav2_bringup</depend>
+  <depend>slam_toolbox</depend>
+  <depend>turtlebot3_gazebo</depend>
+  <depend>turtlebot3_navigation2</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
+
