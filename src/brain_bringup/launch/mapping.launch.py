@@ -1,3 +1,10 @@
+"""Build a map yourself: layer 1 plus SLAM Toolbox.
+
+Drive around with `pixi run teleop` and watch the map grow in RViz
+(`pixi run rviz`). SLAM estimates the map and the robot's position in it at the
+same time from lidar and odometry. Save the result with `pixi run save-map`.
+"""
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource

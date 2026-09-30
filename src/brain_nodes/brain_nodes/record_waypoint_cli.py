@@ -1,3 +1,8 @@
+"""Save where the robot is now as a named place: `pixi run record-waypoint --name kitchen_table`.
+
+The place is written to src/brain_bringup/config/semantic_map.yaml. With the default tag
+"patrol" it is also added to the patrol route (restart the launch to use it)."""
+
 from __future__ import annotations
 
 import argparse
@@ -6,6 +11,7 @@ import rclpy
 from brain_interfaces.srv import RecordSemanticTarget
 from rclpy.node import Node
 
+from brain_nodes.cli_utils import call_service
 from brain_nodes.constants import SERVICE_RECORD_SEMANTIC_TARGET
 
 
@@ -17,18 +23,11 @@ def main() -> None:
 
     rclpy.init()
     node = Node("record_waypoint_cli")
-    client = node.create_client(RecordSemanticTarget, SERVICE_RECORD_SEMANTIC_TARGET)
-    client.wait_for_service(timeout_sec=5.0)
-
     request = RecordSemanticTarget.Request()
     request.name = args.name
     request.tag = args.tag
 
-    future = client.call_async(request)
-    rclpy.spin_until_future_complete(node, future, timeout_sec=5.0)
-    response = future.result()
-    if response is None:
-        raise RuntimeError("RecordSemanticTarget call failed.")
+    response = call_service(node, RecordSemanticTarget, SERVICE_RECORD_SEMANTIC_TARGET, request)
     print(f"saved={response.saved} message={response.message}")
     node.destroy_node()
     if rclpy.ok():

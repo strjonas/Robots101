@@ -1,3 +1,17 @@
+"""Command arbiter: the last gate before a velocity command reaches the robot.
+
+Subscribes:  /brain/cmd_vel_manual    (Twist, keyboard teleop)
+             /brain/cmd_vel_executor  (Twist, skill executor)
+             /brain/cmd_vel_nav       (TwistStamped, Nav2)
+             /brain/control_mode      (who is allowed to drive)
+             /brain/safety_stop       (obstacle right ahead)
+Publishes:   /brain/cmd_vel_final     (Twist, the one command that wins)
+             /brain/active_cmd_source (String, for debugging)
+
+The decision rules live in arbiter_logic.py. If the winning source goes quiet,
+the arbiter sends zero velocity, so a crashed node cannot leave the robot driving.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -8,6 +22,13 @@ from geometry_msgs.msg import Twist, TwistStamped
 from rclpy.node import Node
 from std_msgs.msg import Bool, String
 
+from brain_nodes.arbiter_logic import (
+    SOURCE_EXECUTOR,
+    SOURCE_MANUAL,
+    SOURCE_NAV,
+    limit_forward_speed,
+    select_source,
+)
 from brain_nodes.constants import (
     TOPIC_ACTIVE_CMD_SOURCE,
     TOPIC_CMD_VEL,
@@ -49,8 +70,11 @@ class CmdArbiterNode(Node):
         self.nav_cmd = TimedTwist()
         self.executor_cmd = TimedTwist()
         self.current_mode = ControlMode()
+        self.current_mode.mode = ControlMode.IDLE
         self.safety_stop = False
         self.last_source = ""
+        self.last_forward_blocked = False
+        self.ticks_since_source_publish = 0
 
         self.create_timer(0.05, self._publish_selected_cmd)
 
@@ -74,33 +98,38 @@ class CmdArbiterNode(Node):
         return timed_twist.stamp_ns > 0 and age_sec <= timeout_sec
 
     def _publish_selected_cmd(self) -> None:
-        zero = Twist()
-        source = "zero"
-        output = zero
+        source = select_source(
+            mode=self.current_mode.mode,
+            manual_fresh=self._is_fresh(self.manual_cmd, self.manual_timeout_sec),
+            executor_fresh=self._is_fresh(self.executor_cmd, self.executor_timeout_sec),
+            nav_fresh=self._is_fresh(self.nav_cmd, self.nav_timeout_sec),
+        )
+        commands = {
+            SOURCE_MANUAL: self.manual_cmd.message,
+            SOURCE_EXECUTOR: self.executor_cmd.message,
+            SOURCE_NAV: self.nav_cmd.message,
+        }
+        selected = commands.get(source, Twist())
 
-        if self.current_mode.mode == ControlMode.EMERGENCY_STOP or self.safety_stop:
-            source = "safety_stop"
-        elif self.current_mode.mode == ControlMode.MANUAL:
-            if self._is_fresh(self.manual_cmd, self.manual_timeout_sec):
-                output = self.manual_cmd.message
-                source = "manual"
-        elif self.current_mode.mode == ControlMode.BRAIN_TASK:
-            if self._is_fresh(self.executor_cmd, self.executor_timeout_sec):
-                output = self.executor_cmd.message
-                source = "executor"
-            elif self._is_fresh(self.nav_cmd, self.nav_timeout_sec):
-                output = self.nav_cmd.message
-                source = "nav"
-        elif self.current_mode.mode == ControlMode.PATROL:
-            if self._is_fresh(self.nav_cmd, self.nav_timeout_sec):
-                output = self.nav_cmd.message
-                source = "nav"
-
+        output = Twist()
+        output.linear.x = limit_forward_speed(selected.linear.x, self.safety_stop)
+        output.angular.z = selected.angular.z
         self.cmd_publisher.publish(output)
+
+        forward_blocked = output.linear.x != selected.linear.x
+        if forward_blocked != self.last_forward_blocked:
+            self.last_forward_blocked = forward_blocked
+            if forward_blocked:
+                self.get_logger().warning(f"Obstacle ahead: blocking forward motion from '{source}'")
+
+        # Announce changes immediately, and repeat once a second for tools that join late.
+        self.ticks_since_source_publish += 1
         if source != self.last_source:
-            self.last_source = source
-            self.source_publisher.publish(String(data=source))
             self.get_logger().info(f"Arbiter source -> {source}")
+        if source != self.last_source or self.ticks_since_source_publish >= 20:
+            self.last_source = source
+            self.ticks_since_source_publish = 0
+            self.source_publisher.publish(String(data=source))
 
 
 def main() -> None:

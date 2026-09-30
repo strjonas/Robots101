@@ -1,9 +1,17 @@
+"""Layer 2: layer 1 plus localization (AMCL), navigation (Nav2) and patrol.
+
+Nav2 normally publishes straight to /cmd_vel. Here that topic is remapped to
+/brain/cmd_vel_nav so its commands pass through the arbiter like everyone else's.
+"""
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import EnvironmentVariable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node, SetRemap
 from launch_ros.substitutions import FindPackageShare
+
+from brain_bringup.runtime import config_path
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -12,7 +20,7 @@ def generate_launch_description() -> LaunchDescription:
     map_file = LaunchConfiguration("map_file")
     params_file = LaunchConfiguration("params_file")
     repo_root = EnvironmentVariable("ROBOTS101_ROOT", default_value=EnvironmentVariable("PWD"))
-    semantic_map_path = PathJoinSubstitution([FindPackageShare("brain_bringup"), "config", "semantic_map.yaml"])
+    semantic_map_path = config_path("semantic_map.yaml")
 
     sim_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(

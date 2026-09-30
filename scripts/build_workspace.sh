@@ -18,6 +18,9 @@ fi
 
 cd "$ROOT_DIR"
 
+# The build copies Python and launch files into install/. After editing a node,
+# run `pixi run build` again before relaunching. Config files are read straight
+# from src/brain_bringup/config, so those need no rebuild.
 colcon build \
   --packages-up-to brain_interfaces brain_nodes brain_bringup \
   --cmake-force-configure \

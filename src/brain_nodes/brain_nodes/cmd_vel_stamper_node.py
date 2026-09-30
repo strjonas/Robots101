@@ -1,3 +1,12 @@
+"""Stamper: adds a timestamp header to the arbiter's output.
+
+Subscribes:  /brain/cmd_vel_final (Twist)
+Publishes:   /cmd_vel (TwistStamped) - the topic the simulator bridge listens on.
+
+ROS 2 Jazzy moved velocity commands from Twist to TwistStamped. Keyboard teleop
+still speaks plain Twist, so the arbiter works in Twist and this node converts.
+"""
+
 from __future__ import annotations
 
 import rclpy

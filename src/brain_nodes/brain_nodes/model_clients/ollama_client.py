@@ -1,3 +1,11 @@
+"""Planner backend that asks a local LLM served by Ollama.
+
+The model receives the system prompt (config/gemma_system_prompt.md), one JSON
+document describing the task and the robot's situation, and the current camera
+image. It must answer with one JSON action, which is validated by ActionProposal
+before anything reaches the robot.
+"""
+
 from __future__ import annotations
 
 import base64
@@ -17,6 +25,18 @@ class OllamaClient:
         self.ollama_url = ollama_url.rstrip("/")
         self.system_prompt = Path(system_prompt_path).read_text().strip()
 
+    def check(self) -> str:
+        """Quick health check. Returns "" if the server is up and has the model, else what is wrong."""
+        try:
+            version = requests.get(f"{self.ollama_url}/api/version", timeout=3).json().get("version", "?")
+            models = requests.get(f"{self.ollama_url}/api/tags", timeout=3).json().get("models", [])
+        except requests.RequestException:
+            return f"Ollama is not reachable at {self.ollama_url}. Start the Ollama app or `ollama serve`."
+        names = {model.get("name") for model in models}
+        if self.model_name not in names and f"{self.model_name}:latest" not in names:
+            return f"Ollama {version} does not have '{self.model_name}'. Run `ollama pull {self.model_name}`."
+        return ""
+
     def infer(self, request: ModelRequest) -> ParsedModelResult:
         user_payload = {
             "task_id": request.task_id,
@@ -25,6 +45,7 @@ class OllamaClient:
             "mode": request.mode_name,
             "observation": request.observation,
             "semantic_targets": request.semantic_targets,
+            "history": request.history,
             "required_output_schema": {
                 "action": "STOP | TURN | DRIVE | GOTO_SEMANTIC | FOLLOW_OBJECT | LOOK_AROUND",
                 "angle_rad": "float",
@@ -46,14 +67,20 @@ class OllamaClient:
             "model": self.model_name,
             "stream": False,
             "format": "json",
+            "options": {"temperature": 0},
             "messages": [
                 {"role": "system", "content": self.system_prompt},
                 message,
             ],
         }
 
-        response = requests.post(f"{self.ollama_url}/api/chat", json=payload, timeout=120)
-        response.raise_for_status()
+        try:
+            response = requests.post(f"{self.ollama_url}/api/chat", json=payload, timeout=120)
+        except requests.RequestException as exc:
+            return ParsedModelResult(error=f"cannot reach Ollama at {self.ollama_url}: {exc}")
+        if not response.ok:
+            # Ollama explains what went wrong in the body, e.g. a missing or unsupported model.
+            return ParsedModelResult(error=f"Ollama HTTP {response.status_code}: {response.text.strip()[:300]}")
         content = response.json()["message"]["content"]
         cleaned = self._extract_json(content)
         try:

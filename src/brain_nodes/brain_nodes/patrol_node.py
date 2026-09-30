@@ -1,3 +1,12 @@
+"""Patrol: when nothing else is going on, drive round the named waypoints.
+
+Subscribes:    /brain/control_mode, /brain/observation_summary
+Action client: /navigate_to_pose (Nav2)
+
+Only acts in PATROL mode. It does not drive the robot itself: it hands Nav2 one
+goal at a time and waits for the result before sending the next.
+"""
+
 from __future__ import annotations
 
 import math
@@ -26,10 +35,12 @@ class PatrolNode(Node):
         self.targets = list(self.semantic_map.patrol_targets())
         self.index = 0
         self.control_mode = ControlMode()
+        self.control_mode.mode = ControlMode.IDLE
         self.localization_ok = False
         self.next_attempt_time = self.get_clock().now()
         self.nav_client = ActionClient(self, NavigateToPose, "/navigate_to_pose")
         self.nav_goal_handle = None
+        self.goal_pending = False
         self.create_subscription(ControlMode, TOPIC_CONTROL_MODE, self._mode_cb, 10)
         self.create_subscription(ObservationSummary, TOPIC_OBSERVATION_SUMMARY, self._observation_cb, 10)
         self.create_timer(0.5, self._tick)
@@ -53,7 +64,7 @@ class PatrolNode(Node):
             return
         if now < self.next_attempt_time:
             return
-        if self.nav_goal_handle is not None:
+        if self.goal_pending or self.nav_goal_handle is not None:
             return
         if not self.nav_client.wait_for_server(timeout_sec=0.1):
             self.next_attempt_time = now + self.retry_delay
@@ -70,10 +81,12 @@ class PatrolNode(Node):
         goal.pose.pose.orientation.w = math.cos(target.yaw / 2.0)
 
         self.get_logger().info(f"Patrol goal -> {target.name}")
+        self.goal_pending = True
         future = self.nav_client.send_goal_async(goal)
         future.add_done_callback(self._on_goal_response)
 
     def _on_goal_response(self, future) -> None:
+        self.goal_pending = False
         self.nav_goal_handle = future.result()
         if self.nav_goal_handle is None or not self.nav_goal_handle.accepted:
             self.get_logger().warning("Patrol goal rejected")
@@ -82,13 +95,17 @@ class PatrolNode(Node):
             return
         result_future = self.nav_goal_handle.get_result_async()
         result_future.add_done_callback(self._on_result)
+        if self.control_mode.mode != ControlMode.PATROL:
+            self._cancel_goal()
 
     def _on_result(self, future) -> None:
         result = future.result()
         if result is not None and result.status == GoalStatus.STATUS_SUCCEEDED:
             self.index += 1
+        elif result is not None and result.status == GoalStatus.STATUS_CANCELED:
+            self.get_logger().info("Patrol paused (goal canceled because the mode changed)")
         else:
-            self.get_logger().warning("Patrol goal did not succeed")
+            self.get_logger().warning("Patrol goal did not succeed, retrying shortly")
             self.next_attempt_time = self.get_clock().now() + self.retry_delay
         self.nav_goal_handle = None
 

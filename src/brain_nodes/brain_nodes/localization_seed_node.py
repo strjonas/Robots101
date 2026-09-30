@@ -1,3 +1,12 @@
+"""Localization seed: tells AMCL where the robot starts.
+
+Publishes:   /initialpose (until AMCL answers on /amcl_pose)
+
+AMCL tracks the robot on the map but needs a first guess. In RViz you would
+click "2D Pose Estimate"; this node does the same thing automatically using the
+spawn point from the semantic map.
+"""
+
 from __future__ import annotations
 
 import math
@@ -59,9 +68,8 @@ class LocalizationSeedNode(Node):
             )
             return fallback
 
-        described_targets = list(semantic_map.targets.values())
-        if described_targets:
-            fallback = described_targets[0]
+        if semantic_map.targets:
+            fallback = semantic_map.targets[0]
             self.get_logger().warning(
                 f"Semantic target '{requested_name}' not found. Falling back to first semantic target '{fallback.name}'."
             )

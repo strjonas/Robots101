@@ -20,6 +20,8 @@ TOPIC_OBSERVATION_SUMMARY = "/brain/observation_summary"
 TOPIC_TRACKED_OBJECTS = "/brain/tracked_objects"
 TOPIC_SAFETY_STOP = "/brain/safety_stop"
 TOPIC_ACTIVE_CMD_SOURCE = "/brain/active_cmd_source"
+TOPIC_SEMANTIC_MARKERS = "/brain/semantic_markers"
+TOPIC_DETECTION_IMAGE = "/brain/detection_image"
 
 SERVICE_SUBMIT_TASK = "/brain/submit_task"
 SERVICE_CLEAR_TASK = "/brain/clear_task"
@@ -27,10 +29,14 @@ SERVICE_SET_EMERGENCY_STOP = "/brain/set_emergency_stop"
 SERVICE_RECORD_SEMANTIC_TARGET = "/brain/record_semantic_target"
 
 def _package_path(relative_path: str) -> Path:
+    # Prefer the source tree so edits to config files apply without rebuilding.
+    source_path = WORKSPACE_ROOT / "src" / "brain_bringup" / relative_path
+    if source_path.is_file():
+        return source_path
     try:
         return Path(get_package_share_directory("brain_bringup")) / relative_path
     except PackageNotFoundError:
-        return WORKSPACE_ROOT / "src" / "brain_bringup" / relative_path
+        return source_path
 
 
 DEFAULT_SEMANTIC_MAP_PATH = _package_path("config/semantic_map.yaml")

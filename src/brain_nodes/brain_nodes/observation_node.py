@@ -1,5 +1,17 @@
+"""Observation node: boils the raw sensor topics down to one small summary message.
+
+Subscribes:  /odom, /amcl_pose, /scan, /brain/tracked_objects, /brain/executor_status
+Publishes:   /brain/observation_summary (2 Hz) - pose, nearest named place, obstacle
+             distances per side, visible objects. This is what the planner sees.
+Service:     /brain/record_semantic_target - save the current pose as a named place.
+
+Pose comes from AMCL (map frame) once localization is running, before that from
+raw odometry, and `localization_ok` tells consumers which one they are getting.
+"""
+
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import rclpy
@@ -17,7 +29,8 @@ from brain_nodes.constants import (
     TOPIC_OBSERVATION_SUMMARY,
     TOPIC_TRACKED_OBJECTS,
 )
-from brain_nodes.math_utils import finite_min, quaternion_to_yaw
+from brain_nodes.math_utils import quaternion_to_yaw
+from brain_nodes.scan_utils import FRONT, LEFT, REAR, RIGHT, sector_min
 from brain_nodes.semantic_map import SemanticMap
 
 
@@ -75,12 +88,13 @@ class ObservationNode(Node):
         if self.scan is None or not self.scan.ranges:
             return float("inf"), float("inf"), float("inf"), float("inf"), False, False
 
-        ranges = self.scan.ranges
-        quarter = max(1, len(ranges) // 4)
-        front = finite_min(ranges[:quarter] + ranges[-quarter:])
-        left = finite_min(ranges[quarter: quarter * 2])
-        rear = finite_min(ranges[quarter * 2: quarter * 3])
-        right = finite_min(ranges[quarter * 3:])
+        scan = self.scan
+        quarter = math.pi / 4.0
+
+        def closest(center_rad: float) -> float:
+            return sector_min(scan.ranges, scan.angle_min, scan.angle_increment, center_rad, quarter)
+
+        front, left, rear, right = closest(FRONT), closest(LEFT), closest(REAR), closest(RIGHT)
         obstacle_close = front < 0.4
         collision_imminent = front < 0.22
         return front, left, right, rear, obstacle_close, collision_imminent
