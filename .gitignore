@@ -3,6 +3,8 @@
 build/
 install/
 log/
+.ros/
+bags/
 maps/
 *.pyc
 __pycache__/

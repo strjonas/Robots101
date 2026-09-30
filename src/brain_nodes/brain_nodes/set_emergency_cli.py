@@ -1,3 +1,5 @@
+"""Emergency stop: `pixi run estop --enabled --reason "..."` to stop everything, `pixi run estop` to release."""
+
 from __future__ import annotations
 
 import argparse
@@ -6,6 +8,7 @@ import rclpy
 from brain_interfaces.srv import SetEmergencyStop
 from rclpy.node import Node
 
+from brain_nodes.cli_utils import call_service
 from brain_nodes.constants import SERVICE_SET_EMERGENCY_STOP
 
 
@@ -17,18 +20,11 @@ def main() -> None:
 
     rclpy.init()
     node = Node("set_emergency_cli")
-    client = node.create_client(SetEmergencyStop, SERVICE_SET_EMERGENCY_STOP)
-    client.wait_for_service(timeout_sec=5.0)
-
     request = SetEmergencyStop.Request()
     request.enabled = args.enabled
     request.reason = args.reason
 
-    future = client.call_async(request)
-    rclpy.spin_until_future_complete(node, future, timeout_sec=5.0)
-    response = future.result()
-    if response is None:
-        raise RuntimeError("SetEmergencyStop call failed.")
+    response = call_service(node, SetEmergencyStop, SERVICE_SET_EMERGENCY_STOP, request)
     print(f"success={response.success} message={response.message}")
     node.destroy_node()
     if rclpy.ok():

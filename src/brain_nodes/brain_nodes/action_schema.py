@@ -1,8 +1,14 @@
+"""The shape of one planner action, and the checks it must pass.
+
+Whatever a planner backend returns (an LLM can return anything) is parsed into
+an ActionProposal. If that fails, the action never reaches the robot.
+"""
+
 from __future__ import annotations
 
 from typing import Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ActionProposal(BaseModel):
@@ -16,6 +22,11 @@ class ActionProposal(BaseModel):
     preferred_distance_m: float = 0.8
     confidence: float = 0.0
     rationale: str = ""
+
+    @field_validator("action", mode="before")
+    @classmethod
+    def normalize_action(cls, value: object) -> object:
+        return value.strip().upper() if isinstance(value, str) else value
 
     @model_validator(mode="after")
     def validate_shape(self) -> "ActionProposal":

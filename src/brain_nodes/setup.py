@@ -32,6 +32,8 @@ setup(
             "safety_monitor_node = brain_nodes.safety_monitor_node:main",
             "skill_executor_node = brain_nodes.skill_executor_node:main",
             "task_server_node = brain_nodes.task_server_node:main",
+            "semantic_marker_node = brain_nodes.semantic_marker_node:main",
+            "status_cli = brain_nodes.status_cli:main",
             "submit_task_cli = brain_nodes.submit_task_cli:main",
             "clear_task_cli = brain_nodes.clear_task_cli:main",
             "set_emergency_cli = brain_nodes.set_emergency_cli:main",

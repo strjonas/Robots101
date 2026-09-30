@@ -1,3 +1,14 @@
+"""Control supervisor: decides which top-level mode the robot is in.
+
+Subscribes:  /brain/cmd_vel_manual, /brain/current_task, /brain/observation_summary
+Publishes:   /brain/control_mode (10 Hz)
+Service:     /brain/set_emergency_stop
+
+Priority, highest first: EMERGENCY_STOP > MANUAL (a key was pressed recently)
+> BRAIN_TASK (a task is active) > PATROL (localized, nothing else to do) > IDLE.
+Every other node reads the mode and steps back when it is not its turn.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -42,7 +53,7 @@ class ControlSupervisorNode(Node):
         self.manual_timeout_sec = float(self.get_parameter("manual_timeout_sec").value)
         self.patrol_enabled = bool(self.get_parameter("patrol_enabled").value)
         self.require_localization_for_patrol = bool(self.get_parameter("require_localization_for_patrol").value)
-        self.last_manual_time = self.get_clock().now()
+        self.last_manual_time = None
         self.emergency_state = EmergencyState()
         self.localization_ok = False
         self.last_mode = None
@@ -72,7 +83,10 @@ class ControlSupervisorNode(Node):
 
     def _publish_mode(self) -> None:
         now = self.get_clock().now()
-        manual_active = (now - self.last_manual_time).nanoseconds / 1e9 < self.manual_timeout_sec
+        manual_active = (
+            self.last_manual_time is not None
+            and (now - self.last_manual_time).nanoseconds / 1e9 < self.manual_timeout_sec
+        )
 
         message = ControlMode()
         message.header.stamp = now.to_msg()

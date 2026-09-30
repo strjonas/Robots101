@@ -4,7 +4,31 @@ import os
 import platform
 from pathlib import Path
 
+from ament_index_python.packages import get_package_share_directory
 from launch.actions import SetEnvironmentVariable
+
+
+def bringup_file(folder: str, file_name: str) -> str:
+    """Path of a file in brain_bringup/<folder> (config/ or worlds/).
+
+    Prefers the copy in the source tree (when ROBOTS101_ROOT is set, which
+    scripts/ros_env.sh does) so that edits to the semantic map, the prompt, the
+    RViz layout or the world apply on the next launch without rebuilding.
+    """
+    root = os.environ.get("ROBOTS101_ROOT", "").strip()
+    if root:
+        source_file = Path(root) / "src" / "brain_bringup" / folder / file_name
+        if source_file.is_file():
+            return str(source_file)
+    return str(Path(get_package_share_directory("brain_bringup")) / folder / file_name)
+
+
+def config_path(file_name: str) -> str:
+    return bringup_file("config", file_name)
+
+
+def world_path(file_name: str) -> str:
+    return bringup_file("worlds", file_name)
 
 
 def _link_short_plugin_dir(source_dir: Path, short_dir: Path) -> Path:
