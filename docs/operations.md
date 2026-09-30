@@ -1,313 +1,102 @@
-# Operations Runbook
+# Operations
 
-This file is the operator-facing runbook for this repository.
+Every command, setting and recovery step in one place. All commands run from the repo folder.
 
-It deliberately separates:
-
-- verified behavior: things that were directly exercised during the implementation session
-- standard-but-not-re-verified commands: commands that are normal for ROS, Gazebo, or Ollama, but were not re-run in this documentation-only pass
-
-## Verified State
-
-The following were directly exercised during the implementation session:
-
-- `pixi run build`
-- `pixi run test`
-- `pixi run nav`
-- `pixi run brain`
-- `pixi run submit-task -- --instruction "turn left"`
-- `pixi run submit-task -- --instruction "drive to doorway"`
-- manual velocity override by publishing on `/brain/cmd_vel_manual`
-
-Observed working behavior:
-
-- the robot patrols semantic waypoints in the TurtleBot3 house world
-- the local Gemma planner can produce `TURN` and `GOTO_SEMANTIC` actions
-- the executor can perform direct actions and Nav2-backed semantic navigation
-- the task server auto-completes successful `TURN` and `GOTO_SEMANTIC` tasks
-- manual input preempts patrol and then returns to patrol after timeout
-
-Not directly verified in the final documentation pass:
-
-- `FOLLOW_OBJECT` end-to-end in a reliable live scene
-- the Gazebo GUI path with `with_gui:=true`
-- a dedicated RViz workflow, because the repo currently does not launch RViz for you
-- the mapping workflow after the latest planner/executor fixes
-
-## Important Environment Variables
-
-### `ROBOTS101_ROOT`
-
-Optional override for the repository root.
-
-Why it exists:
-
-- the repo should keep working even if you move it somewhere else
-- helper scripts now use this variable if it is set
-- launch defaults for the house map also use this variable
-
-Example:
+## Setup
 
 ```bash
-export ROBOTS101_ROOT=/path/to/wherever/you/moved/the/repo
-cd "$ROBOTS101_ROOT"
+pixi install                 # once, ~6 GB into .pixi/
+pixi run build               # after changing Python, .msg/.srv, setup.py or package.xml
+pixi run test                # unit tests
+pixi run validate-env        # prints Python, ROS distro and package locations
+pixi run generate-house-map  # once, writes maps/turtlebot3_house.{yaml,pgm}
 ```
 
-If you do not set it, the scripts infer the root from their own location.
+## Running
 
-### `ROBOTS101_WITH_GUI`
+Pick one launch per terminal:
 
-Controls whether the Gazebo client is requested by the Pixi tasks.
+| Command | Starts |
+|---|---|
+| `pixi run sim` | Gazebo + robot + control nodes |
+| `pixi run mapping` | sim + SLAM Toolbox |
+| `pixi run nav` | sim + AMCL + Nav2 + patrol |
+| `pixi run brain` | tracker + planner + executor (on top of a running `nav`) |
+| `pixi run full-stack` | nav + brain |
 
-Examples:
+Tools, each in another terminal while something above runs:
+
+| Command | Does |
+|---|---|
+| `pixi run rviz` | RViz with the project layout |
+| `pixi run status` | live text panel |
+| `pixi run teleop` | keyboard driving (i/j/k/l/…), preempts everything else |
+| `pixi run graph` | rqt_graph node/topic picture |
+| `pixi run ros <args>` | any `ros2` command, e.g. `pixi run ros topic echo /brain/control_mode` |
+| `pixi run submit-task --instruction "…" [--wait]` | give it a task; `--wait` prints each step |
+| `pixi run clear-task` | cancel the current task |
+| `pixi run estop --enabled [--reason "…"]` / `pixi run estop` | emergency stop on / off |
+| `pixi run record-waypoint --name kitchen_table [--tag patrol]` | save the current pose as a named place |
+| `pixi run save-map` | save the SLAM map to `maps/my_house.{yaml,pgm}` |
+| `pixi run rosbag-full` | record the important topics to `bags/` for replay |
+
+Always start ROS programs through `pixi run`. Running a binary from `.pixi/envs/default/...` directly (for example double-clicking `rviz2`) skips the environment setup and crashes with `AMENT_PREFIX_PATH is not set`.
+
+## Settings
+
+| Variable | Default | Effect |
+|---|---|---|
+| `ROBOTS101_WITH_GUI` | `true` | `false` runs Gazebo without its window (faster, fine with RViz) |
+| `ROBOTS101_PLANNER_BACKEND` | `ollama` | `rules` uses the keyword planner, no LLM needed |
+| `ROBOTS101_MODEL` | `gemma4:e4b` | Ollama model name |
+| `ROBOTS101_OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama server |
+| `ROBOTS101_MAP_FILE` | `maps/turtlebot3_house.yaml` | map for `nav` / `full-stack`, e.g. your SLAM map |
+| `ROBOTS101_ROOT` | repo folder | set automatically; config files are read from here |
+| `ROS_HOME` | `.ros/` in the repo | where ROS writes logs |
+
+Example: `ROBOTS101_WITH_GUI=false ROBOTS101_PLANNER_BACKEND=rules pixi run full-stack`.
+
+## What healthy looks like
+
+In the launch terminal, within a minute or two of `pixi run full-stack`:
+
+```
+[control_supervisor]: Control mode -> 3 (Waiting for localization)
+[localization_seed_node]: AMCL pose received. Localization seeded successfully.
+[control_supervisor]: Control mode -> 1 (Default patrol mode)
+[patrol_node]: Patrol goal -> foyer_spawn
+[bt_navigator]: Goal succeeded
+[patrol_node]: Patrol goal -> kitchen_entry
+```
+
+Mode numbers: 0 MANUAL, 1 PATROL, 2 BRAIN_TASK, 3 IDLE, 4 EMERGENCY_STOP.
+
+Harmless noise you can ignore on macOS: RViz's `Validation Failed: Sampler error` (the map still draws), `Unable to load Ogre Plugin` (rendering works anyway), `Could not resolve file [Maple.jpg]`, Qt shader warnings, `Error_code parameters were not set`, and Nav2 controller-rate warnings.
+
+## When something is wrong
+
+**Robot doesn't appear / "Requesting list of world names" repeats.** The first start after installing or rebooting can take 1–2 minutes, and the very first start downloads the walking person's model from Gazebo Fuel. Wait. To run without the person: `pixi run ros launch brain_bringup sim_only.launch.py world:=$PWD/.pixi/envs/default/share/turtlebot3_gazebo/worlds/turtlebot3_house.world`.
+
+**Nothing moves.** `pixi run status`: check `mode` and `driving`. IDLE means AMCL has no pose yet; in RViz use **2D Pose Estimate**. `safety: OBSTACLE AHEAD` blocks forward motion; drive back with teleop.
+
+**A task does nothing.** Look at the `planner_node` lines in the launch terminal. With the Ollama backend: `curl http://127.0.0.1:11434/api/version` checks the server; `unknown model architecture` means Ollama is too old for the model. The task server gives up after 3 failed attempts, so a broken backend ends the task within about 10 s.
+
+**Where are the logs?** `.ros/log/` (one folder per launch). `pixi run ros topic echo /brain/executor_status` shows what the executor is doing right now.
+
+**Left-over processes after a crash.** Ctrl-C in the launch terminal is cleanest. If things are stuck:
 
 ```bash
-export ROBOTS101_WITH_GUI=false
-pixi run nav
+pkill -f 'ros2 launch brain_bringup'; pkill -f 'gz sim'; pkill -f component_container; pkill -f brain_nodes
 ```
+
+Then check nothing is left with `pgrep -fl 'gz sim|ros2|brain_nodes'`.
+
+## Ollama
 
 ```bash
-export ROBOTS101_WITH_GUI=true
-pixi run full-stack
+ollama pull gemma4:e4b   # 6.6 GB, once
+ollama ps                # is a model loaded right now?
+ollama stop gemma4:e4b   # free its memory, keep it on disk
 ```
 
-### `ROBOTS101_MAP_FILE`
-
-Optional override for the Nav2 map file.
-
-Example:
-
-```bash
-export ROBOTS101_MAP_FILE="$ROBOTS101_ROOT/maps/turtlebot3_house.yaml"
-```
-
-### `ROS_HOME`
-
-Optional override for ROS logs and cache state.
-
-If unset, `scripts/ros_env.sh` uses `$ROBOTS101_ROOT/.ros`.
-
-## Start Commands
-
-### One-time setup
-
-```bash
-pixi install
-pixi run build
-pixi run test
-pixi run generate-house-map
-```
-
-### Split start, headless
-
-Terminal 1:
-
-```bash
-pixi run nav
-```
-
-Terminal 2:
-
-```bash
-pixi run brain
-```
-
-Terminal 3, optional manual teleop:
-
-```bash
-pixi run teleop
-```
-
-Terminal 4, submit tasks:
-
-```bash
-pixi run submit-task -- --instruction "turn left"
-pixi run submit-task -- --instruction "drive to doorway"
-```
-
-### Combined start
-
-```bash
-pixi run full-stack
-```
-
-### Mapping
-
-```bash
-pixi run mapping
-```
-
-This launch exists. It was not the focus of the final validation pass.
-
-## What You Can See
-
-### Without GUI
-
-Headless mode is the most trustworthy mode right now.
-
-What to watch:
-
-- terminal logs from `patrol_node`: semantic patrol targets changing
-- terminal logs from `control_supervisor_node`: mode changes such as `PATROL`, `BRAIN_TASK`, `MANUAL`
-- terminal logs from `planner_node`: structured actions chosen by Gemma
-- terminal logs from `cmd_arbiter_node`: active command source switching between `nav`, `executor`, `manual`, `zero`
-
-Useful ROS checks:
-
-```bash
-ros2 topic echo --once /brain/observation_summary
-ros2 topic echo --once /brain/current_task
-ros2 topic echo --once /brain/planner_action
-ros2 topic echo --once /brain/executor_status
-ros2 topic echo --once /brain/active_cmd_source
-```
-
-What a healthy headless smoke test looks like:
-
-- patrol starts automatically
-- `/brain/observation_summary` shows pose and semantic location
-- a `turn left` task causes control mode to switch to `BRAIN_TASK`
-- `planner_node` emits a `TURN`
-- the executor runs the turn
-- the task clears
-- patrol resumes
-
-### With GUI
-
-The repo has a Gazebo GUI path through the `with_gui` launch argument.
-
-What this means today:
-
-- it asks Gazebo to start the client window
-- it does not automatically start RViz
-
-What I am sure about:
-
-- the GUI launch path exists in the launch files
-
-What I am not claiming here:
-
-- that the GUI path was re-validated in this final documentation-only pass
-
-If the GUI path works on your machine, you should be able to:
-
-- see the apartment-like world
-- see the robot move during patrol
-- observe task-driven motion such as `turn left` or `drive to doorway`
-
-## Ollama / Gemma Commands
-
-These are standard Ollama commands. I am confident they are the intended commands, but I did not re-run them in this documentation-only pass.
-
-Start the Ollama daemon:
-
-```bash
-ollama serve
-```
-
-List downloaded models:
-
-```bash
-ollama list
-```
-
-Show currently loaded / running models:
-
-```bash
-ollama ps
-```
-
-Download Gemma locally:
-
-```bash
-ollama pull gemma4:e4b
-```
-
-Unload the model from memory but keep it on disk:
-
-```bash
-ollama stop gemma4:e4b
-```
-
-Remove the model from disk entirely:
-
-```bash
-ollama rm gemma4:e4b
-```
-
-Notes:
-
-- `ollama serve` starts the daemon, not necessarily the model itself
-- the model is normally loaded on demand by a request
-- `ollama stop gemma4:e4b` is the thing that should free model RAM if your local version supports it
-
-## Process Inspection
-
-These commands are useful when you think old processes are still alive.
-
-### General process listing
-
-```bash
-pgrep -af 'ollama|ros2|gz|rviz|planner_node|skill_executor|nav2|slam_toolbox|component_container'
-```
-
-```bash
-ps aux | rg 'ollama|ros2|gz|rviz|planner_node|skill_executor|nav2|slam_toolbox|component_container'
-```
-
-### ROS graph inspection
-
-```bash
-ros2 node list
-ros2 topic list
-ros2 action list
-```
-
-### Check whether Ollama is listening
-
-```bash
-lsof -i :11434
-```
-
-## Stop Commands
-
-### Best option
-
-Stop things from the terminals that launched them with `Ctrl-C`.
-
-That is the cleanest route.
-
-### If things are stuck
-
-These are broad force-stop commands. Read them before using them.
-
-Stop launch files and ROS runtime processes:
-
-```bash
-pkill -f 'ros2 launch brain_bringup'
-pkill -f 'ros2 run brain_nodes'
-pkill -f 'component_container_isolated'
-pkill -f 'gz sim'
-```
-
-Stop teleop:
-
-```bash
-pkill -f 'teleop_twist_keyboard'
-```
-
-Stop Ollama if you launched it manually:
-
-```bash
-pkill -f 'ollama serve'
-```
-
-If you ever configure Ollama as a Homebrew background service, use the Homebrew service commands instead of `pkill`.
-
-## Known Operational Caveats
-
-- macOS Gazebo is viable here, but it is still a higher-friction platform than Linux for simulator work
-- headless bringup is the most trustworthy path at the moment
-- the Nav2 controller frequently logs rate warnings on this machine; those warnings did not prevent successful patrol or task execution in the verified runs
-- `FOLLOW_OBJECT` needs a scene where the tracker can actually see a YOLO-recognizable object
-- there is no packaged “show me everything” dashboard yet; the main observability is terminal logs plus ROS topics
+`gemma4:e4b` needs a recent Ollama (0.35.0 works; 0.30.7 fails with "unknown model architecture"). The Ollama menu-bar app updates itself; the Homebrew CLI updates with `brew upgrade ollama`. Only one of them can serve port 11434 at a time. At startup the planner checks that the server is reachable and has the model, and logs an error saying what to do if not.
